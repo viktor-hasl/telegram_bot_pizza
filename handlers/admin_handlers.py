@@ -1,20 +1,25 @@
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery, InputMediaPhoto
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.context import FSMContext
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete
+
+from database.models import Product
 
 from filters import type_chat_filter, check_admins
-from keyboards.kb_admin import kb_admin
+from keyboards.kb_admin import kb_admin, ikb_admin
 from middlewares.db import SessionMiddleware
 from database.engine import session_maker
-from orm_query import orm_add_product, orm_get_products
+from orm_query import orm_add_product, orm_get_products, orm_delete_product, orm_update_product, orm_get_one
 
 router = Router()
 router.message.filter(type_chat_filter.ChatTypeFilter(['private']), check_admins.CheckAdmin())
+router.callback_query.filter(check_admins.CheckAdmin())
 router.message.middleware(SessionMiddleware(session_pool=session_maker))
+router.callback_query.middleware(SessionMiddleware(session_pool=session_maker))
 
 
 class AddProductState(StatesGroup):
@@ -94,15 +99,20 @@ async def add_photo(message: Message, state: FSMContext, session: AsyncSession):
                                reply_markup=kb_admin(['Добавить пиццу', 'Меню админа']))
 
     # Добавление продукта в бд
-    try:
-        await orm_add_product(session, data)
-        await message.answer('Товар добавлен')
-        # Очистка машинного состояния
+    if 'id_product' in data.keys():
+        await orm_update_product(session, data['id_product'], data)
+        await message.answer('Товар изменен', reply_markup=kb_admin(['Добавить пиццу', 'Меню админа']))
         await state.clear()
-    except Exception as e:
-        str_er = str(e)
-        await message.answer(f'Ошибка: {str_er}, обратитесь к программисту')
-        await state.clear()
+    else:
+        try:
+            await orm_add_product(session, data)
+            await message.answer('Товар добавлен')
+            # Очистка машинного состояния
+            await state.clear()
+        except Exception as e:
+            str_er = str(e)
+            await message.answer(f'Ошибка: {str_er}, обратитесь к программисту')
+            await state.clear()
 
 
 @router.message(AddProductState.photo)
@@ -118,7 +128,33 @@ async def menu_admin_cmd(message: Message, session: AsyncSession):
     for product in await orm_get_products(session):
         await message.answer_photo(photo=product.photo,
                                    caption=f'{product.title}\n{product.description}\n{round(product.price, 2)}',
-                                   reply_markup=kb_admin(['Добавить пиццу', 'Меню админа']))
-
-    await message.answer('Меню админа')
+                                   reply_markup=ikb_admin({'Удалить': f'delete_{product.id}',
+                                                           "Изменить": f'edited_{product.id}'
+                                                           }))
+        print(product.photo)
     await message.delete()
+
+
+@router.callback_query(F.data.startswith('delete'))
+async def delete_product(callback: CallbackQuery, session: AsyncSession):
+    id_product = callback.data.split('_')[-1]
+
+    await orm_delete_product(session, int(id_product))
+    await callback.message.delete()
+    await callback.answer('Товар удален')
+    await callback.message.answer('Товар удален')
+
+
+# Пример редактирования фото
+# await callback.message.edit_media(media=InputMediaPhoto(media='AgACAgIAAxkBAAITu2b1nyGGnw0_OdThBJXvXpcJv6cZAAIc4TEbhT6xS-RiOETEXy_0AQADAgADeQADNgQ'))
+
+@router.callback_query(StateFilter(None), F.data.startswith('edited'))
+async def delete_product(callback: CallbackQuery, state: FSMContext):
+    id_product = callback.data.split('_')[-1]
+    await state.set_state(AddProductState.title)
+    await state.update_data(id_product=id_product)
+    await callback.message.answer('Введите название пиццы', reply_markup=kb_admin(['Отмена']))
+    await callback.message.delete()
+
+
+    await callback.answer()
