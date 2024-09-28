@@ -1,18 +1,18 @@
 from aiogram import Router, F
 
 from aiogram.types import Message, CallbackQuery, InputMediaPhoto
-from aiogram.fsm.state import StatesGroup, State
+
 from aiogram.fsm.context import FSMContext
-from aiogram.filters import Command, CommandStart, StateFilter
+from aiogram.filters import Command, CommandStart
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from filters.type_chat_filter import ChatTypeFilter
 from keyboards.kb_admin import ikb_admin
-from keyboards.kb_users import kb_users
+from keyboards.kb_users import ikb_main_page
 from database.engine import session_maker
 from middlewares.db import SessionMiddleware
-from orm_query import orm_get_products, orm_get_one
+from orm_query import orm_get_products, orm_get_one, orm_get_banner
 
 router = Router()
 router.message.filter(ChatTypeFilter(['private']))
@@ -21,9 +21,15 @@ router.callback_query.middleware(SessionMiddleware(session_pool=session_maker))
 
 
 @router.message(CommandStart())
-async def start_cmd(message: Message):
-    await message.answer('Добро пожаловать текст, начало использования бота', reply_markup=kb_users)
-    await message.bot.delete_message(message.chat.id, message_id=message.message_id)
+async def start_cmd(message: Message, session: AsyncSession):
+    if await orm_get_banner(session) is None:
+        await message.answer_photo(photo='AgACAgIAAxkBAAITu2b1nyGGnw0_OdThBJXvXpcJv6cZAAIc4TEbhT6xS-RiOETEXy_0AQADAgADeQADNgQ', caption='Добро пожаловать в нашу пиццерию.\nМы очень рады вас видеть!\n'
+                                                     'Tут вы можете заказать себе вкусную пиццу', reply_markup=ikb_main_page)
+    else:
+        banner = await orm_get_banner(session)
+        await message.answer_photo(photo=banner.photo,
+                                   caption='Добро пожаловать в нашу пиццерию.\nМы очень рады вас видеть!\n'
+                                           'Tут вы можете заказать себе вкусную пиццу', reply_markup=ikb_main_page)
 
 
 @router.message(F.text.lower() == 'о нас')
@@ -44,7 +50,7 @@ async def menu_cmd(message: Message, session: AsyncSession, state: FSMContext):
     await state.update_data(list_id_product=list_id_product, index=index)
     await message.answer_photo(photo=products[index].photo,
                                caption=f'{products[index].title}\n{products[index].description}\n{round(products[index].price, 2)}',
-                               reply_markup=ikb_admin({'👈': 'back',  '❌': 'end', '👉': 'next'}))
+                               reply_markup=ikb_admin({'👈': 'back', '❌': 'end', '👉': 'next'}))
 
     await message.bot.delete_message(message.chat.id, message_id=message.message_id)
 
@@ -57,7 +63,7 @@ async def next_product_callback(callback: CallbackQuery, state: FSMContext, sess
         return
     products_id = data['list_id_product']
     index = data['index']
-    if index < len(products_id)-1:
+    if index < len(products_id) - 1:
         index += 1
         product = await orm_get_one(session, products_id[index])
         await state.update_data(index=index)
@@ -88,10 +94,12 @@ async def next_product_callback(callback: CallbackQuery, state: FSMContext, sess
     else:
         await callback.answer('Ты уже в начале 😉😉', show_alert=True)
 
+
 @router.callback_query(F.data == 'end')
 async def end_check_products(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.delete()
+
 
 @router.message(F.text.lower() == 'помощь')
 @router.message(Command('help'))

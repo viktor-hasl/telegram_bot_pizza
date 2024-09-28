@@ -13,7 +13,7 @@ from filters import type_chat_filter, check_admins
 from keyboards.kb_admin import kb_admin, ikb_admin
 from middlewares.db import SessionMiddleware
 from database.engine import session_maker
-from orm_query import orm_add_product, orm_get_products, orm_delete_product, orm_update_product, orm_get_one
+from orm_query import orm_add_product, orm_get_products, orm_delete_product, orm_update_product, orm_add_banner
 
 router = Router()
 router.message.filter(type_chat_filter.ChatTypeFilter(['private']), check_admins.CheckAdmin())
@@ -32,7 +32,7 @@ class AddProductState(StatesGroup):
 @router.message(Command('admin'))
 async def admin_cmd(message: Message):
     await message.answer('Что вас интересует?',
-                         reply_markup=kb_admin(['Добавить пиццу', 'Меню админа']))
+                         reply_markup=kb_admin(['Добавить пиццу', 'Меню админа', "Добавить/Изменить баннер"]))
     await message.delete()
 
 
@@ -52,7 +52,9 @@ async def cancel_game(message: Message, state: FSMContext):
         return
     else:
         await state.clear()
-        await message.answer('Процесс остановлен', reply_markup=kb_admin(['Добавить пиццу', 'Меню админа']))
+        await message.answer('Процесс остановлен', reply_markup=kb_admin(['Добавить пиццу', 'Меню админа', "Добавить/Изменить баннер"]))
+
+
 
 
 @router.message(AddProductState.title, F.text)
@@ -96,12 +98,12 @@ async def add_photo(message: Message, state: FSMContext, session: AsyncSession):
     await state.update_data(photo=message.photo[-1].file_id)
     data = await state.get_data()
     await message.answer_photo(photo=data['photo'], caption=f'{data["title"]}\n{data["description"]}\n{data["price"]}',
-                               reply_markup=kb_admin(['Добавить пиццу', 'Меню админа']))
+                               reply_markup=kb_admin(['Добавить пиццу', 'Меню админа', "Добавить/Изменить баннер"]))
 
     # Добавление продукта в бд
     if 'id_product' in data.keys():
         await orm_update_product(session, data['id_product'], data)
-        await message.answer('Товар изменен', reply_markup=kb_admin(['Добавить пиццу', 'Меню админа']))
+        await message.answer('Товар изменен', reply_markup=kb_admin(['Добавить пиццу', 'Меню админа', "Добавить/Изменить баннер"]))
         await state.clear()
     else:
         try:
@@ -118,6 +120,17 @@ async def add_photo(message: Message, state: FSMContext, session: AsyncSession):
 @router.message(AddProductState.photo)
 async def no_photo(message: Message):
     await message.answer('Нужно отправить фото')
+
+
+@router.message(F.text.contains('баннер'))
+async def text_for_add_banner(message: Message):
+    await message.answer('Для добавления баннера, нужно отправить фото и в описание написать "баннер"')
+
+
+@router.message(F.caption.lower() == 'баннер')
+async def add_banner(message: Message, session: AsyncSession):
+    await orm_add_banner(session, message.photo[-1].file_id)
+    await message.answer('Баннер изменен')
 
 
 # ---------------------------------------------------------------------------------------------------
