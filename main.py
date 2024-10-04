@@ -3,7 +3,6 @@ import asyncio
 from dotenv import load_dotenv
 
 from aiogram import Bot, Dispatcher, types, F
-
 from handlers import privat_handlers, admin_handlers
 from filters.type_chat_filter import ChatTypeFilter
 from database.engine import create_db, drop_db
@@ -40,11 +39,13 @@ async def main():
             bot.list_admins.add(admin.user.id)
         await message.delete()
 
-
     dp.include_router(admin_handlers.router)
     dp.include_router(privat_handlers.router)
     await bot.delete_webhook(drop_pending_updates=True)
-    # await bot.set_my_commands()
+    await bot.set_my_commands(commands=[types.BotCommand(command='start', description='Вызов главного меню'),
+                                        types.BotCommand(command='help', description='Помощь')
+                                        ],
+                              scope=types.BotCommandScopeAllPrivateChats())
     await dp.start_polling(bot)
 
 

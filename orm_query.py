@@ -18,7 +18,10 @@ async def orm_get_products(session: AsyncSession):
     query = select(Product)
     result = await session.execute(query)
 
-    return result.scalars().all()
+    products = result.scalars().all()
+    for i in range(0, len(products)):
+        products[i].page = i
+    return products
 
 
 async def orm_get_one(session: AsyncSession, id_product: int):
@@ -67,7 +70,10 @@ async def orm_add_product_in_cart(session: AsyncSession, id_user: int, id_produc
 async def orm_get_all_products_in_cart(session: AsyncSession, id_user):
     query = select(Cart).where(Cart.id_user == id_user)
     result = await session.execute(query)
-    return result.scalars().all()
+    products = result.scalars().all()
+    for i in range(0, len(products)):
+        products[i].page = i
+    return products
 
 
 async def orm_get_one_in_cart(session: AsyncSession, id_user: int, id_product: int):
@@ -77,7 +83,7 @@ async def orm_get_one_in_cart(session: AsyncSession, id_user: int, id_product: i
 
 
 async def orm_del_product_in_cart(session: AsyncSession, id_product: int):
-    query = delete(Cart).where(Cart.id_product == id_product)
+    query = delete(Cart).where(Cart.id == id_product)
     await session.execute(query)
     await session.commit()
 
