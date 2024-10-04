@@ -164,4 +164,4 @@ cython_debug/
 .idea/
 test.py
 my_base.db
-config
+config/
